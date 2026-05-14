@@ -13,6 +13,7 @@
   "dependencies": {
     "@reown/appkit": "^1.8.18",
     "@reown/appkit-adapter-ethers": "^1.8.18",
+    "book-of-stamps": "file:../book-of-stamps",
     "viem": "^2.46.3"
   },
   "devDependencies": {

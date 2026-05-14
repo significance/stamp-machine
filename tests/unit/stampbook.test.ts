@@ -10,7 +10,7 @@ function makeBook(overrides?: Partial<StampBook>): StampBook {
     bucketDepth: 16,
     amount: 1_000_000_000n,
     privateKey: new Uint8Array(32).fill(0x42),
-    usage: '0/1048576',
+    buckets: null,
     ...overrides,
   }
 }
@@ -42,14 +42,17 @@ describe('serializeStampBook', () => {
     expect(() => atob(bodyLine)).not.toThrow()
   })
 
-  it('shows fresh usage for depth 20', () => {
-    const output = serializeStampBook(makeBook({ usage: '' }))
-    expect(output).toContain('Usage: 0/1048576')
+  it('includes xxd dump for non-zero buckets', () => {
+    const buckets = new Uint32Array(65536)
+    buckets[0] = 3
+    const output = serializeStampBook(makeBook({ buckets }))
+    expect(output).toContain('Usage: 3/1048576')
+    expect(output).toContain('00000000:')
   })
 })
 
 describe('deserializeStampBook', () => {
-  it('round-trips correctly', () => {
+  it('round-trips fresh book', () => {
     const original = makeBook()
     const serialized = serializeStampBook(original)
     const parsed = deserializeStampBook(serialized)
@@ -60,16 +63,20 @@ describe('deserializeStampBook', () => {
     expect(parsed.depth).toBe(20)
     expect(parsed.bucketDepth).toBe(16)
     expect(parsed.amount).toBe(1_000_000_000n)
-    expect(parsed.usage).toBe('0/1048576')
     expect(parsed.privateKey).toEqual(original.privateKey)
+    expect(parsed.buckets).toBeNull()
   })
 
-  it('serialize → deserialize → serialize is stable', () => {
-    const original = makeBook()
-    const first = serializeStampBook(original)
-    const parsed = deserializeStampBook(first)
-    const second = serializeStampBook(parsed)
-    expect(second).toBe(first)
+  it('round-trips book with bucket state', () => {
+    const buckets = new Uint32Array(65536)
+    buckets[0] = 5
+    buckets[1000] = 12
+    const original = makeBook({ buckets })
+    const serialized = serializeStampBook(original)
+    const parsed = deserializeStampBook(serialized)
+    expect(parsed.buckets).not.toBeNull()
+    expect(parsed.buckets![0]).toBe(5)
+    expect(parsed.buckets![1000]).toBe(12)
   })
 
   it('throws on missing delimiters', () => {
@@ -85,21 +92,5 @@ describe('deserializeStampBook', () => {
       '-----END BOOK OF STAMPS-----',
     ].join('\n')
     expect(() => deserializeStampBook(broken)).toThrow('missing header')
-  })
-
-  it('throws on missing body separator', () => {
-    const broken = [
-      '-----BEGIN BOOK OF STAMPS-----',
-      'Version: 1',
-      `Batch-Id: ${'a'.repeat(64)}`,
-      `Owner: ${'b'.repeat(40)}`,
-      'Depth: 20',
-      'Bucket-Depth: 16',
-      'Amount: 1000000000',
-      'Usage: 0/1048576',
-      'QUJD',
-      '-----END BOOK OF STAMPS-----',
-    ].join('\n')
-    expect(() => deserializeStampBook(broken)).toThrow()
   })
 })

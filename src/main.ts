@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         bucketDepth: BUCKET_DEPTH,
         amount: amountPerChunk,
         privateKey: burner.privateKey,
-        usage: `0/${1 << BATCH_DEPTH}`,
+        buckets: null,
       })
 
       lastContent = content
