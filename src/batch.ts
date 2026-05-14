@@ -4,10 +4,9 @@ import { toHex } from './keygen'
 
 export const BZZ_TOKEN = '0xdBF3Ea6F5beE45c02255B2c26a16F300502F68da'
 export const POSTAGE_CONTRACT = '0x45a1502382541Cd610CC9068e88727426b696293'
+export const RPC = 'https://rpc.gnosis.gateway.fm'
 export const BATCH_DEPTH = 20
 export const BUCKET_DEPTH = 16
-export const AMOUNT_PER_CHUNK = 1_000_000_000n
-export const TOTAL_COST = AMOUNT_PER_CHUNK * (1n << BigInt(BATCH_DEPTH))
 
 const approveAbi = [{
   name: 'approve',
@@ -35,11 +34,66 @@ const createBatchAbi = [{
   stateMutability: 'nonpayable' as const,
 }]
 
-export async function approveBzz(provider: EIP1193Provider, from: string): Promise<string> {
+async function rpcCall(method: string, params: unknown[]): Promise<string> {
+  const res = await fetch(RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  })
+  const json = await res.json() as { result?: string }
+  return json.result ?? '0x0'
+}
+
+// Read minimumInitialBalancePerChunk from the PostageStamp contract
+// selector: keccak256("minimumInitialBalancePerChunk()")[:4] = 0x90697842
+export async function getMinAmountPerChunk(): Promise<bigint> {
+  const result = await rpcCall('eth_call', [
+    { to: POSTAGE_CONTRACT, data: '0x90697842' },
+    'latest',
+  ])
+  return BigInt(result)
+}
+
+// Read BZZ balance for an address
+// selector: keccak256("balanceOf(address)")[:4] = 0x70a08231
+export async function getBzzBalance(address: string): Promise<bigint> {
+  const paddedAddr = address.replace(/^0x/, '').padStart(64, '0')
+  const result = await rpcCall('eth_call', [
+    { to: BZZ_TOKEN, data: '0x70a08231' + paddedAddr },
+    'latest',
+  ])
+  return BigInt(result)
+}
+
+export interface BatchParams {
+  amountPerChunk: bigint
+  totalCost: bigint
+}
+
+// Calculate the batch cost dynamically: use minimum + 20% buffer
+export async function calculateBatchCost(): Promise<BatchParams> {
+  const minAmount = await getMinAmountPerChunk()
+  // Add 20% buffer above minimum to ensure the batch lasts a reasonable time
+  const amountPerChunk = minAmount + (minAmount / 5n)
+  const totalCost = amountPerChunk * (1n << BigInt(BATCH_DEPTH))
+  return { amountPerChunk, totalCost }
+}
+
+export async function checkBzzSufficient(address: string, totalCost: bigint): Promise<void> {
+  const balance = await getBzzBalance(address)
+  if (balance < totalCost) {
+    const BZZ_DECIMALS = 16n
+    const needed = Number(totalCost * 10000n / (10n ** BZZ_DECIMALS)) / 10000
+    const have = Number(balance * 10000n / (10n ** BZZ_DECIMALS)) / 10000
+    throw new Error(`insufficient BZZ: need ${needed}, have ${have}`)
+  }
+}
+
+export async function approveBzz(provider: EIP1193Provider, from: string, totalCost: bigint): Promise<string> {
   const data = encodeFunctionData({
     abi: approveAbi,
     functionName: 'approve',
-    args: [POSTAGE_CONTRACT, TOTAL_COST],
+    args: [POSTAGE_CONTRACT, totalCost],
   })
   return provider.request({
     method: 'eth_sendTransaction',
@@ -51,12 +105,13 @@ export async function createBatch(
   provider: EIP1193Provider,
   from: string,
   ownerAddress: string,
+  amountPerChunk: bigint,
 ): Promise<{ batchId: string; txHash: string }> {
   const nonce = `0x${toHex(crypto.getRandomValues(new Uint8Array(32)))}` as `0x${string}`
   const data = encodeFunctionData({
     abi: createBatchAbi,
     functionName: 'createBatch',
-    args: [ownerAddress as `0x${string}`, AMOUNT_PER_CHUNK, BATCH_DEPTH, BUCKET_DEPTH, nonce, false],
+    args: [ownerAddress as `0x${string}`, amountPerChunk, BATCH_DEPTH, BUCKET_DEPTH, nonce, false],
   })
   const txHash = await provider.request({
     method: 'eth_sendTransaction',

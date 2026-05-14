@@ -100,4 +100,10 @@ export async function ensureGnosisChain(provider: EIP1193Provider): Promise<void
       }],
     })
   }
+
+  // Verify the switch actually happened
+  const newChainId = await provider.request({ method: 'eth_chainId' }) as string
+  if (newChainId !== '0x64') {
+    throw new Error('Please switch to Gnosis chain (chainId 100) in your wallet to continue')
+  }
 }

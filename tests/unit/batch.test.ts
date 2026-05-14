@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { approveBzz, createBatch, extractBatchId, waitForReceipt, TOTAL_COST, BATCH_DEPTH, AMOUNT_PER_CHUNK, BZZ_TOKEN, POSTAGE_CONTRACT } from '../../src/batch'
+import { approveBzz, createBatch, extractBatchId, waitForReceipt, BATCH_DEPTH, BZZ_TOKEN, POSTAGE_CONTRACT } from '../../src/batch'
 import type { EIP1193Provider } from '../../src/wallet'
 
 function mockProvider(overrides: Record<string, unknown> = {}): EIP1193Provider {
@@ -21,16 +21,16 @@ function mockProvider(overrides: Record<string, unknown> = {}): EIP1193Provider 
 }
 
 describe('constants', () => {
-  it('TOTAL_COST = AMOUNT × 2^DEPTH', () => {
-    expect(TOTAL_COST).toBe(AMOUNT_PER_CHUNK * (1n << BigInt(BATCH_DEPTH)))
-    expect(TOTAL_COST).toBe(1_048_576_000_000_000n)
+  it('BATCH_DEPTH is 20', () => {
+    expect(BATCH_DEPTH).toBe(20)
   })
 })
 
 describe('approveBzz', () => {
   it('sends approve transaction to BZZ token', async () => {
     const provider = mockProvider()
-    const txHash = await approveBzz(provider, '0x1234567890abcdef1234567890abcdef12345678')
+    const totalCost = 1_000_000_000n * (1n << 20n)
+    const txHash = await approveBzz(provider, '0x1234567890abcdef1234567890abcdef12345678', totalCost)
 
     expect(txHash).toBe('0x' + 'cc'.repeat(32))
     expect(provider.request).toHaveBeenCalledWith(expect.objectContaining({
@@ -121,7 +121,7 @@ describe('waitForReceipt', () => {
 describe('createBatch', () => {
   it('sends createBatch transaction to PostageStamp contract', async () => {
     const provider = mockProvider()
-    const result = await createBatch(provider, '0x1234567890abcdef1234567890abcdef12345678', '0xdEADbeEF00000000000000000000000000000001')
+    const result = await createBatch(provider, '0x1234567890abcdef1234567890abcdef12345678', '0xdEADbeEF00000000000000000000000000000001', 1_000_000_000n)
 
     expect(result.batchId).toBe('ab'.repeat(32))
     expect(result.txHash).toBe('0x' + 'cc'.repeat(32))

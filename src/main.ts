@@ -1,5 +1,5 @@
 import { connectWallet, getConnectedAccount, ensureGnosisChain } from './wallet'
-import { approveBzz, createBatch, BATCH_DEPTH, BUCKET_DEPTH, AMOUNT_PER_CHUNK, TOTAL_COST } from './batch'
+import { approveBzz, createBatch, waitForReceipt, BATCH_DEPTH, BUCKET_DEPTH, calculateBatchCost, checkBzzSufficient, POSTAGE_CONTRACT, BZZ_TOKEN } from './batch'
 import { generateBurnerWallet } from './keygen'
 import { serializeStampBook } from './stampbook'
 import { triggerDownload } from './download'
@@ -20,6 +20,28 @@ const STATUS_TEXT: Record<MachineState, string> = {
 
 const STORAGE_KEY = 'stamp-machine:current-book'
 
+// ╔═══════════════════════════════════════════════════════════╗
+// ║  5W4RM 5T4MP M4CH1N3  //  h4x0r c0ns0l3                 ║
+// ╚═══════════════════════════════════════════════════════════╝
+
+const l33t = (tag: string, msg: string, ...args: unknown[]) =>
+  console.log(
+    `%c[5T4MP-M4CH1N3]%c ${tag} %c${msg}`,
+    'color:#fe7900;font-weight:bold',
+    'color:#f5c518;font-weight:bold',
+    'color:#aaa',
+    ...args,
+  )
+
+const l33tErr = (tag: string, msg: string, ...args: unknown[]) =>
+  console.error(
+    `%c[5T4MP-M4CH1N3]%c ${tag} %c${msg}`,
+    'color:#fe7900;font-weight:bold',
+    'color:#ff4444;font-weight:bold',
+    'color:#aaa',
+    ...args,
+  )
+
 interface StoredBook {
   content: string
   batchId: string
@@ -36,7 +58,28 @@ function loadBook(): StoredBook | null {
   try { return JSON.parse(raw) } catch { return null }
 }
 
+function formatBzz(plurs: bigint): string {
+  const val = Number(plurs) / 1e16
+  if (val === 0) return '0'
+  if (val >= 1) return val.toFixed(2)
+  if (val >= 0.01) return val.toFixed(4)
+  return val.toExponential(3)
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+  console.log(`%c
+  ╔══════════════════════════════════════════╗
+  ║   5W4RM  P0ST4G3  5T4MP  M4CH1N3       ║
+  ║   ────────────────────────────────       ║
+  ║   1NS3RT C01N  >>  C0LL3CT ST4MPS       ║
+  ║                                          ║
+  ║   p0st4g3: ${POSTAGE_CONTRACT.slice(0, 10)}...  ║
+  ║   bzz:     ${BZZ_TOKEN.slice(0, 10)}...  ║
+  ║   d3pth:   ${BATCH_DEPTH} (2^${BATCH_DEPTH} = ${(1 << BATCH_DEPTH).toLocaleString()} chunks) ║
+  ║   buck3ts: ${BUCKET_DEPTH} (2^${BUCKET_DEPTH} = ${(1 << BUCKET_DEPTH).toLocaleString()} buckets)║
+  ╚══════════════════════════════════════════╝
+`, 'color:#fe7900;font-family:monospace')
+
   const coinSlot = document.querySelector<HTMLElement>('[data-coin-slot]')!
   const knob = document.querySelector<HTMLElement>('[data-knob]')!
   const booklet = document.querySelector<HTMLElement>('[data-booklet]')!
@@ -44,25 +87,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   const light = document.querySelector<HTMLElement>('[data-light]')!
   const toast = document.querySelector<HTMLElement>('[data-toast]')!
   const batchInfo = document.querySelector<HTMLElement>('[data-batch-info]')!
+  const costEl = document.querySelector<HTMLElement>('[data-cost]')
 
   let state: MachineState = 'IDLE'
   let lastContent: string | null = null
 
-  // Display dynamic cost (BZZ has 16 decimals on Gnosis)
-  const costEl = document.querySelector<HTMLElement>('[data-cost]')
+  // Fetch dynamic cost on load
   if (costEl) {
-    const BZZ_DECIMALS = 16n
-    const whole = TOTAL_COST / (10n ** BZZ_DECIMALS)
-    const frac = TOTAL_COST % (10n ** BZZ_DECIMALS)
-    const fracStr = frac.toString().padStart(Number(BZZ_DECIMALS), '0').slice(0, 4)
-    const display = fracStr ? `${whole}.${fracStr}` : `${whole}`
-    costEl.textContent = `${display} BZZ`
+    costEl.textContent = '... BZZ'
+    l33t('PR1C3', 'f3tch1ng curr3nt st4mp pr1c3 fr0m gn0s1s...')
+    calculateBatchCost().then(({ amountPerChunk, totalCost }) => {
+      costEl.textContent = `${formatBzz(totalCost)} BZZ`
+      l33t('PR1C3', `m1n p3r chunk: ${amountPerChunk} plurs`)
+      l33t('PR1C3', `t0t4l c0st: ${totalCost} plurs (${formatBzz(totalCost)} BZZ)`)
+    }).catch((err) => {
+      costEl.textContent = '? BZZ'
+      l33tErr('PR1C3', `f41l3d t0 f3tch: ${err}`)
+    })
   }
 
   function setState(next: MachineState) {
     state = next
     status.textContent = STATUS_TEXT[next]
     coinSlot.classList.toggle('disabled', next !== 'IDLE' && next !== 'COMPLETE')
+    l33t('ST4T3', `${next}`)
 
     const processing = next !== 'IDLE' && next !== 'COMPLETE'
     light.classList.toggle('active', processing)
@@ -74,13 +122,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const dateStr = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
     batchInfo.textContent = `${batchId.slice(0, 8)}\u2026 \u00b7 ${dateStr}`
 
+    l33t('CH3CK', `v3r1fy1ng b4tch ${batchId.slice(0, 16)}... 0n-ch41n`)
     try {
       const alive = await checkBatchAlive(batchId)
-      if (!alive) {
+      if (alive) {
+        l33t('CH3CK', `b4tch 1s 4L1V3`)
+      } else {
+        l33tErr('CH3CK', `b4tch 1s D34D (3xp1r3d)`)
         batchInfo.innerHTML = `${batchId.slice(0, 8)}\u2026 \u00b7 ${dateStr} <span class="expired">expired</span>`
       }
     } catch {
-      // RPC unavailable — just show the date
+      l33t('CH3CK', `rpc unr34ch4bl3, sk1pp1ng v3r1f1c4t10n`)
     }
   }
 
@@ -92,6 +144,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       await navigator.clipboard.writeText(lastContent)
       toast.classList.add('show')
       setTimeout(() => toast.classList.remove('show'), 2000)
+      l33t('CL1P', 'b00k 0f st4mps c0p13d t0 cl1pb04rd')
     } catch {
       // Clipboard API may fail in some contexts
     }
@@ -100,10 +153,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Restore from localStorage on load
   const stored = loadBook()
   if (stored) {
+    l33t('R3ST0R3', `f0und s4v3d b00k: ${stored.batchId.slice(0, 16)}...`)
     lastContent = stored.content
     await animateDispense(booklet)
     setState('COMPLETE')
     showBatchStatus(stored.batchId, stored.createdAt)
+  } else {
+    l33t('R3ST0R3', 'n0 s4v3d b00k, m4ch1n3 r34dy')
   }
 
   // Demo: click "Coin" label to preview the dispense animation
@@ -111,6 +167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (demoTrigger) {
     demoTrigger.addEventListener('click', async () => {
       if (state !== 'IDLE') return
+      l33t('D3M0', 'd3m0 m0d3 4ct1v4t3d')
       setState('DISPENSING')
       await animateCoinInsert(coinSlot)
       await animateKnobTurn(knob)
@@ -121,27 +178,54 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   coinSlot.addEventListener('click', async () => {
     if (state !== 'IDLE') return
+    const t0 = performance.now()
 
     try {
-      // Reset any previous booklet
       resetMachine(knob, booklet)
       batchInfo.textContent = ''
+
+      l33t('C01N', '>> c01n 1ns3rt3d, 1n1t14t1ng s3qu3nc3...')
 
       setState('CONNECTING')
       await animateCoinInsert(coinSlot)
 
+      l33t('W4LL3T', 'c0nn3ct1ng w4ll3t v14 31p-1193...')
       const provider = await connectWallet()
+
+      l33t('CH41N', '3nsur1ng gn0s1s ch41n (0x64)...')
       await ensureGnosisChain(provider)
+
       const from = await getConnectedAccount(provider)
+      l33t('W4LL3T', `c0nn3ct3d: ${from}`)
 
       setState('GENERATING')
       const burner = generateBurnerWallet()
+      l33t('K3YG3N', `burn3r w4ll3t g3n3r4t3d: ${burner.address}`)
+      l33t('K3YG3N', `k3y: ${burner.privateKeyHex.slice(0, 10)}...[r3d4ct3d]`)
+
+      l33t('PR1C3', 'c4lcul4t1ng dyn4m1c b4tch c0st...')
+      const { amountPerChunk, totalCost } = await calculateBatchCost()
+      l33t('PR1C3', `4m0unt/chunk: ${amountPerChunk} | t0t4l: ${totalCost} (${formatBzz(totalCost)} BZZ)`)
+
+      l33t('B4L4NC3', `ch3ck1ng BZZ b4l4nc3 f0r ${from.slice(0, 10)}...`)
+      await checkBzzSufficient(from, totalCost)
+      l33t('B4L4NC3', 'suff1c13nt BZZ c0nf1rm3d')
+
+      if (costEl) costEl.textContent = `${formatBzz(totalCost)} BZZ`
 
       setState('APPROVING')
-      await approveBzz(provider, from)
+      l33t('4PPR0V3', `BZZ.4ppr0v3(${POSTAGE_CONTRACT.slice(0, 10)}..., ${totalCost})`)
+      const approveTxHash = await approveBzz(provider, from, totalCost)
+      l33t('4PPR0V3', `tx s3nt: ${approveTxHash}`)
+      l33t('4PPR0V3', 'w41t1ng f0r r3c31pt...')
+      await waitForReceipt(provider, approveTxHash)
+      l33t('4PPR0V3', '4ppr0v4l c0nf1rm3d')
 
       setState('CREATING')
-      const { batchId } = await createBatch(provider, from, burner.address)
+      l33t('B4TCH', `cr34t3B4tch(0wn3r=${burner.address.slice(0, 10)}..., 4mt=${amountPerChunk}, d=${BATCH_DEPTH}, bd=${BUCKET_DEPTH})`)
+      const { batchId, txHash } = await createBatch(provider, from, burner.address, amountPerChunk)
+      l33t('B4TCH', `b4tch cr34t3d! tx: ${txHash}`)
+      l33t('B4TCH', `b4tch 1d: ${batchId}`)
 
       setState('DISPENSING')
       await animateKnobTurn(knob)
@@ -153,7 +237,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         owner: burner.address.slice(2).toLowerCase(),
         depth: BATCH_DEPTH,
         bucketDepth: BUCKET_DEPTH,
-        amount: AMOUNT_PER_CHUNK,
+        amount: amountPerChunk,
         privateKey: burner.privateKey,
         usage: `0/${1 << BATCH_DEPTH}`,
       })
@@ -165,10 +249,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       setState('COMPLETE')
       showBatchStatus(batchId, createdAt)
 
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1)
+      l33t('D0N3', `b00k 0f st4mps d1sp3ns3d 1n ${elapsed}s. gg wp.`)
+
     } catch (err) {
-      console.error('[stamp-machine]', err)
+      l33tErr('F41L', `${err}`)
+      status.textContent = err instanceof Error ? err.message : 'Transaction failed'
       resetMachine(knob, booklet)
-      setState('IDLE')
+      setTimeout(() => setState('IDLE'), 5000)
     }
   })
 })

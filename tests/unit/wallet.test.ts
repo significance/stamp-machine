@@ -90,7 +90,16 @@ describe('ensureGnosisChain', () => {
   })
 
   it('switches chain if on wrong network', async () => {
-    const provider = mockProvider({ eth_chainId: '0x1' })
+    let callCount = 0
+    const provider: EIP1193Provider = {
+      request: vi.fn(async ({ method }: { method: string }) => {
+        if (method === 'eth_chainId') {
+          callCount++
+          return callCount === 1 ? '0x1' : '0x64'
+        }
+        return null
+      }),
+    }
     await ensureGnosisChain(provider)
     expect(provider.request).toHaveBeenCalledWith({
       method: 'wallet_switchEthereumChain',
