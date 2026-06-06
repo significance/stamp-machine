@@ -84,14 +84,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   const knob = document.querySelector<HTMLElement>('[data-knob]')!
   const booklet = document.querySelector<HTMLElement>('[data-booklet]')!
   const light = document.querySelector<HTMLElement>('[data-light]')!
-  const toast = document.querySelector<HTMLElement>('[data-toast]')!
+  const copiedToast = document.querySelector<HTMLElement>('[data-toast]')!
+  const holdToast = document.querySelector<HTMLElement>('[data-hold-toast]')!
   const batchInfo = document.querySelector<HTMLElement>('[data-batch-info]')!
   const costEl = document.querySelector<HTMLElement>('[data-cost]')
+  const ejectBtn = document.querySelector<HTMLElement>('[data-eject]')!
 
   let state: MachineState = 'IDLE'
   let lastContent: string | null = null
-  const holdToast = document.querySelector<HTMLElement>('[data-hold-toast]')!
-  const ejectBtn = document.querySelector<HTMLElement>('[data-eject]')!
+
+  function showToast(text: string) {
+    holdToast.textContent = text
+    holdToast.classList.remove('filling')
+    holdToast.classList.add('show')
+  }
+
+  function hideToast() {
+    holdToast.classList.remove('show', 'filling')
+    void holdToast.offsetWidth
+  }
 
   // Fetch dynamic cost on load
   if (costEl) {
@@ -110,13 +121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function setState(next: MachineState) {
     state = next
     const text = STATUS_TEXT[next]
-    if (text) {
-      holdToast.textContent = text
-      holdToast.classList.remove('filling')
-      holdToast.classList.add('show')
-    } else {
-      holdToast.classList.remove('show', 'filling')
-    }
+    if (text) { showToast(text) } else { hideToast() }
     coinSlot.classList.toggle('disabled', next !== 'IDLE' && next !== 'COMPLETE')
     l33t('ST4T3', `${next}`)
 
@@ -150,8 +155,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!lastContent) return
     try {
       await navigator.clipboard.writeText(lastContent)
-      toast.classList.add('show')
-      setTimeout(() => toast.classList.remove('show'), 2000)
+      copiedToast.classList.add('show')
+      setTimeout(() => copiedToast.classList.remove('show'), 2000)
       l33t('CL1P', 'b00k 0f st4mps c0p13d t0 cl1pb04rd')
     } catch {
       // Clipboard API may fail in some contexts
@@ -196,27 +201,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       l33t('3J3CT', 'b00k 0f st4mps d0wnl04d3d')
     }
 
-    // Phase 1: "Hold to reset!" for 3s
-    holdToast.textContent = 'Book of Stamps downloaded. Hold to reset'
-    holdToast.classList.remove('filling')
-    holdToast.classList.add('show')
+    showToast('Book of Stamps downloaded. Hold to reset')
 
-    // After 3s, switch to phase 2 with scary message + fill
     phaseTimer = setTimeout(() => {
-      holdToast.textContent = 'Caution: storage will be deleted. Hold to reset.'
-      holdToast.classList.remove('filling')
+      showToast('Caution: storage will be deleted. Hold to reset.')
       void holdToast.offsetWidth
       holdToast.classList.add('filling')
     }, 3000)
 
-    // After 8s total, execute reset
     holdTimer = setTimeout(() => {
       localStorage.removeItem(STORAGE_KEY)
       lastContent = null
       resetMachine(knob, booklet)
       batchInfo.textContent = ''
-      holdToast.classList.remove('show', 'filling')
-      void holdToast.offsetWidth
+      hideToast()
       setState('IDLE')
       l33t('3J3CT', 'st0r4g3 cl34r3d, m4ch1n3 r3s3t')
     }, 8000)
@@ -225,8 +223,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function cancelEjectHold() {
     if (holdTimer) { clearTimeout(holdTimer); holdTimer = null }
     if (phaseTimer) { clearTimeout(phaseTimer); phaseTimer = null }
-    holdToast.classList.remove('show', 'filling')
-    void holdToast.offsetWidth
+    hideToast()
   }
 
   ejectBtn.addEventListener('mousedown', startEjectHold)
@@ -238,10 +235,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   coinSlot.addEventListener('click', async () => {
     if (state === 'COMPLETE') {
-      holdToast.textContent = 'Reset the machine before buying another book'
-      holdToast.classList.remove('filling')
-      holdToast.classList.add('show')
-      setTimeout(() => holdToast.classList.remove('show'), 2500)
+      showToast('Reset the machine before buying another book')
+      setTimeout(hideToast, 2500)
       return
     }
     if (state !== 'IDLE') return
@@ -321,9 +316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     } catch (err) {
       l33tErr('F41L', `${err}`)
-      holdToast.textContent = err instanceof Error ? err.message : 'Transaction failed'
-      holdToast.classList.remove('filling')
-      holdToast.classList.add('show')
+      showToast(err instanceof Error ? err.message : 'Transaction failed')
       resetMachine(knob, booklet)
       setTimeout(() => setState('IDLE'), 5000)
     }
