@@ -2,7 +2,7 @@
 
 A web-based Swarm postage stamp vending machine, styled after a vintage Royal Mail stamp dispenser. Insert a coin (connect your wallet), and out drops a Book of Stamps — a portable key file containing a freshly purchased postage batch and the ephemeral wallet that owns it.
 
-![Royal Mail Stamp Machine](IMG20230715165204-scaled.webp)
+![Swarm Stamp Machine](screenshot.png)
 
 ## How it works
 
