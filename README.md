@@ -15,7 +15,7 @@ A web-based Swarm postage stamp vending machine, styled after a vintage Royal Ma
 
 ## Book of Stamps format
 
-The downloaded file follows the [SWIP-draft Book of Stamps](../../swips/SWIPs/SWIP-draft_book_of_stamps.md) portable key file format:
+The downloaded file uses the Book of Stamps portable key file format:
 
 ```
 -----BEGIN BOOK OF STAMPS-----
@@ -29,6 +29,14 @@ Usage: 0/1048576
 
 <base64-encoded private key>
 -----END BOOK OF STAMPS-----
+```
+
+When buckets have been used, the `Usage` header includes trie-encoded bucket state in xxd format:
+
+```
+Usage: 5/1048576 42 bytes
+00000000: 0500 0000 0000 0000 0000 0000 0000 0000  ................
+00000010: 0000 0000 0000 0000 0000 0000 0000 0000  ................
 ```
 
 Import this file into any Swarm application to start uploading with the purchased batch.
