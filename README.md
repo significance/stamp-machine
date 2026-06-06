@@ -7,11 +7,11 @@ A web-based Swarm postage stamp vending machine, styled after a vintage Royal Ma
 ## How it works
 
 1. **Insert coin** — Click the coin slot to connect your wallet via WalletConnect (Gnosis chain)
-2. **Generate wallet** — The machine creates a fresh secp256k1 keypair from browser-native cryptographic entropy
+2. **Generate wallet** — The machine creates a fresh ephemeral secp256k1 keypair from browser-native cryptographic entropy. This key is used solely for stamping — it holds no funds and should not be used for any other purpose.
 3. **Purchase batch** — Two transactions are sent from your connected wallet:
    - `BZZ.approve()` — approve the PostageStamp contract to spend BZZ tokens
    - `PostageStamp.createBatch()` — create a new batch owned by the ephemeral wallet
-4. **Collect booklet** — A Book of Stamps `.pem` file drops into the collection tray and downloads to your device
+4. **Collect booklet** — A Book of Stamps file drops into the collection tray and downloads to your device. Each book contains a unique ephemeral key tied to that batch alone.
 
 ## Book of Stamps format
 

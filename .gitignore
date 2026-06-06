@@ -1,5 +1,7 @@
 node_modules/
 dist/
 test-results/
+src/*.js
+tests/**/*.js
 sig.notes
 package-lock.json
