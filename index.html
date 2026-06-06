@@ -355,14 +355,15 @@
       line-height: 1;
       letter-spacing: 0.02em;
       white-space: nowrap;
+      padding: 20px 0px 0 0;
     }
 
     .booklet-stamp {
       position: absolute;
       top: 6px;
-      right: 6px;
-      width: 36px;
-      height: 42px;
+      right: 7px;
+      width: 32px;
+      height: 32px;
       background: #e07020;
       border: 0.5px solid #d4a574;
       display: flex;
@@ -445,13 +446,13 @@
       padding: 4px 10px;
       border-radius: 4px;
       white-space: nowrap;
-      opacity: 0;
-      transition: opacity 0.3s;
+      visibility: hidden;
+      transition: visibility 0.3s;
       pointer-events: none;
     }
 
     .copied-toast.show {
-      opacity: 1;
+      visibility: visible;
     }
 
     /* ── Responsive ── */
