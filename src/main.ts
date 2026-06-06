@@ -20,6 +20,14 @@ const STATUS_TEXT: Record<MachineState, string> = {
 
 const STORAGE_KEY = 'stamp-machine:current-book'
 
+const TOAST_DURATION_MS = 2000
+const COIN_BLOCK_TOAST_MS = 2500
+const EJECT_PHASE1_MS = 3000
+const ERROR_DISPLAY_MS = 5000
+const EJECT_TOTAL_MS = 8000
+
+function forceReflow(el: HTMLElement) { void el.offsetWidth }
+
 // ╔═══════════════════════════════════════════════════════════╗
 // ║  5W4RM 5T4MP M4CH1N3  //  h4x0r c0ns0l3                 ║
 // ╚═══════════════════════════════════════════════════════════╝
@@ -101,7 +109,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function hideToast() {
     holdToast.classList.remove('show', 'filling')
-    void holdToast.offsetWidth
+    forceReflow(holdToast)
+  }
+
+  function clearMachine() {
+    resetMachine(knob, booklet)
+    batchInfo.textContent = ''
+    lastContent = null
   }
 
   // Fetch dynamic cost on load
@@ -156,7 +170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       await navigator.clipboard.writeText(lastContent)
       copiedToast.classList.add('show')
-      setTimeout(() => copiedToast.classList.remove('show'), 2000)
+      setTimeout(() => copiedToast.classList.remove('show'), TOAST_DURATION_MS)
       l33t('CL1P', 'b00k 0f st4mps c0p13d t0 cl1pb04rd')
     } catch {
       // Clipboard API may fail in some contexts
@@ -205,19 +219,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     phaseTimer = setTimeout(() => {
       showToast('Caution: storage will be deleted. Hold to reset.')
-      void holdToast.offsetWidth
+      forceReflow(holdToast)
       holdToast.classList.add('filling')
-    }, 3000)
+    }, EJECT_PHASE1_MS)
 
     holdTimer = setTimeout(() => {
       localStorage.removeItem(STORAGE_KEY)
-      lastContent = null
-      resetMachine(knob, booklet)
-      batchInfo.textContent = ''
+      clearMachine()
       hideToast()
       setState('IDLE')
       l33t('3J3CT', 'st0r4g3 cl34r3d, m4ch1n3 r3s3t')
-    }, 8000)
+    }, EJECT_TOTAL_MS)
   }
 
   function cancelEjectHold() {
@@ -233,92 +245,94 @@ document.addEventListener('DOMContentLoaded', async () => {
   ejectBtn.addEventListener('touchend', cancelEjectHold)
   ejectBtn.addEventListener('touchcancel', cancelEjectHold)
 
+  async function purchaseStampBook() {
+    const startTime = performance.now()
+
+    l33t('C01N', '>> c01n 1ns3rt3d, 1n1t14t1ng s3qu3nc3...')
+
+    setState('CONNECTING')
+    await animateCoinInsert(coinSlot)
+
+    l33t('W4LL3T', 'c0nn3ct1ng w4ll3t v14 31p-1193...')
+    const provider = await connectWallet()
+
+    l33t('CH41N', '3nsur1ng gn0s1s ch41n (0x64)...')
+    await ensureGnosisChain(provider)
+
+    const from = await getConnectedAccount(provider)
+    l33t('W4LL3T', `c0nn3ct3d: ${from}`)
+
+    setState('GENERATING')
+    const burner = generateBurnerWallet()
+    l33t('K3YG3N', `burn3r w4ll3t g3n3r4t3d: ${burner.address}`)
+    l33t('K3YG3N', `k3y: ${burner.privateKeyHex.slice(0, 10)}...[r3d4ct3d]`)
+
+    l33t('PR1C3', 'c4lcul4t1ng dyn4m1c b4tch c0st...')
+    const { amountPerChunk, totalCost } = await calculateBatchCost()
+    l33t('PR1C3', `4m0unt/chunk: ${amountPerChunk} | t0t4l: ${totalCost} (${formatBzz(totalCost)} BZZ)`)
+
+    l33t('B4L4NC3', `ch3ck1ng BZZ b4l4nc3 f0r ${from.slice(0, 10)}...`)
+    await checkBzzSufficient(from, totalCost)
+    l33t('B4L4NC3', 'suff1c13nt BZZ c0nf1rm3d')
+
+    if (costEl) costEl.textContent = `${formatBzz(totalCost)} BZZ`
+
+    setState('APPROVING')
+    l33t('4PPR0V3', `BZZ.4ppr0v3(${POSTAGE_CONTRACT.slice(0, 10)}..., ${totalCost})`)
+    const approveTxHash = await approveBzz(provider, from, totalCost)
+    l33t('4PPR0V3', `tx s3nt: ${approveTxHash}`)
+    l33t('4PPR0V3', 'w41t1ng f0r r3c31pt...')
+    await waitForReceipt(provider, approveTxHash)
+    l33t('4PPR0V3', '4ppr0v4l c0nf1rm3d')
+
+    setState('CREATING')
+    l33t('B4TCH', `cr34t3B4tch(0wn3r=${burner.address.slice(0, 10)}..., 4mt=${amountPerChunk}, d=${BATCH_DEPTH}, bd=${BUCKET_DEPTH})`)
+    const { batchId, txHash } = await createBatch(provider, from, burner.address, amountPerChunk)
+    l33t('B4TCH', `b4tch cr34t3d! tx: ${txHash}`)
+    l33t('B4TCH', `b4tch 1d: ${batchId}`)
+
+    setState('DISPENSING')
+    await animateKnobTurn(knob)
+    await animateDispense(booklet)
+
+    const content = serializeStampBook({
+      version: 1,
+      batchId,
+      owner: burner.address.slice(2).toLowerCase(),
+      depth: BATCH_DEPTH,
+      bucketDepth: BUCKET_DEPTH,
+      amount: amountPerChunk,
+      privateKey: burner.privateKey,
+      buckets: null,
+    })
+
+    lastContent = content
+    const createdAt = new Date().toISOString()
+    saveBook({ content, batchId, createdAt })
+    triggerDownload(content, `book-of-stamps-${batchId.slice(0, 8)}.txt`)
+    setState('COMPLETE')
+    showBatchStatus(batchId, createdAt)
+
+    const elapsed = ((performance.now() - startTime) / 1000).toFixed(1)
+    l33t('D0N3', `b00k 0f st4mps d1sp3ns3d 1n ${elapsed}s. gg wp.`)
+  }
+
   coinSlot.addEventListener('click', async () => {
     if (state === 'COMPLETE') {
       showToast('Reset the machine before buying another book')
-      setTimeout(hideToast, 2500)
+      setTimeout(hideToast, COIN_BLOCK_TOAST_MS)
       return
     }
     if (state !== 'IDLE') return
-    const t0 = performance.now()
 
     try {
-      resetMachine(knob, booklet)
-      batchInfo.textContent = ''
-
-      l33t('C01N', '>> c01n 1ns3rt3d, 1n1t14t1ng s3qu3nc3...')
-
-      setState('CONNECTING')
-      await animateCoinInsert(coinSlot)
-
-      l33t('W4LL3T', 'c0nn3ct1ng w4ll3t v14 31p-1193...')
-      const provider = await connectWallet()
-
-      l33t('CH41N', '3nsur1ng gn0s1s ch41n (0x64)...')
-      await ensureGnosisChain(provider)
-
-      const from = await getConnectedAccount(provider)
-      l33t('W4LL3T', `c0nn3ct3d: ${from}`)
-
-      setState('GENERATING')
-      const burner = generateBurnerWallet()
-      l33t('K3YG3N', `burn3r w4ll3t g3n3r4t3d: ${burner.address}`)
-      l33t('K3YG3N', `k3y: ${burner.privateKeyHex.slice(0, 10)}...[r3d4ct3d]`)
-
-      l33t('PR1C3', 'c4lcul4t1ng dyn4m1c b4tch c0st...')
-      const { amountPerChunk, totalCost } = await calculateBatchCost()
-      l33t('PR1C3', `4m0unt/chunk: ${amountPerChunk} | t0t4l: ${totalCost} (${formatBzz(totalCost)} BZZ)`)
-
-      l33t('B4L4NC3', `ch3ck1ng BZZ b4l4nc3 f0r ${from.slice(0, 10)}...`)
-      await checkBzzSufficient(from, totalCost)
-      l33t('B4L4NC3', 'suff1c13nt BZZ c0nf1rm3d')
-
-      if (costEl) costEl.textContent = `${formatBzz(totalCost)} BZZ`
-
-      setState('APPROVING')
-      l33t('4PPR0V3', `BZZ.4ppr0v3(${POSTAGE_CONTRACT.slice(0, 10)}..., ${totalCost})`)
-      const approveTxHash = await approveBzz(provider, from, totalCost)
-      l33t('4PPR0V3', `tx s3nt: ${approveTxHash}`)
-      l33t('4PPR0V3', 'w41t1ng f0r r3c31pt...')
-      await waitForReceipt(provider, approveTxHash)
-      l33t('4PPR0V3', '4ppr0v4l c0nf1rm3d')
-
-      setState('CREATING')
-      l33t('B4TCH', `cr34t3B4tch(0wn3r=${burner.address.slice(0, 10)}..., 4mt=${amountPerChunk}, d=${BATCH_DEPTH}, bd=${BUCKET_DEPTH})`)
-      const { batchId, txHash } = await createBatch(provider, from, burner.address, amountPerChunk)
-      l33t('B4TCH', `b4tch cr34t3d! tx: ${txHash}`)
-      l33t('B4TCH', `b4tch 1d: ${batchId}`)
-
-      setState('DISPENSING')
-      await animateKnobTurn(knob)
-      await animateDispense(booklet)
-
-      const content = serializeStampBook({
-        version: 1,
-        batchId,
-        owner: burner.address.slice(2).toLowerCase(),
-        depth: BATCH_DEPTH,
-        bucketDepth: BUCKET_DEPTH,
-        amount: amountPerChunk,
-        privateKey: burner.privateKey,
-        buckets: null,
-      })
-
-      lastContent = content
-      const createdAt = new Date().toISOString()
-      saveBook({ content, batchId, createdAt })
-      triggerDownload(content, `book-of-stamps-${batchId.slice(0, 8)}.txt`)
-      setState('COMPLETE')
-      showBatchStatus(batchId, createdAt)
-
-      const elapsed = ((performance.now() - t0) / 1000).toFixed(1)
-      l33t('D0N3', `b00k 0f st4mps d1sp3ns3d 1n ${elapsed}s. gg wp.`)
-
+      clearMachine()
+      await purchaseStampBook()
     } catch (err) {
       l33tErr('F41L', `${err}`)
       showToast(err instanceof Error ? err.message : 'Transaction failed')
-      resetMachine(knob, booklet)
-      setTimeout(() => setState('IDLE'), 5000)
+      clearMachine()
+      setTimeout(() => setState('IDLE'), ERROR_DISPLAY_MS)
     }
   })
 })
