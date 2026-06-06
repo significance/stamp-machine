@@ -21,6 +21,10 @@
       padding: 0;
     }
 
+    html {
+      background: #b89970;
+    }
+
     body {
       min-height: 100vh;
       display: flex;
@@ -119,7 +123,7 @@
 
     .embossed-bee {
       position: absolute;
-      top: 6px;
+      top: 10px;
       left: 50%;
       transform: translateX(-50%);
       width: 16px;
@@ -358,6 +362,24 @@
       padding: 20px 0px 0 0;
     }
 
+    .booklet-copy {
+      position: absolute;
+      bottom: 6px;
+      right: 10px;
+      width: 16px;
+      height: 16px;
+      color: #f0ebe0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.7;
+    }
+
+    .booklet-copy svg {
+      width: 100%;
+      height: 100%;
+    }
+
     .booklet-stamp {
       position: absolute;
       top: 6px;
@@ -455,6 +477,69 @@
       visibility: visible;
     }
 
+    .eject-label {
+      font-family: "Banks Miles Double Line", 'Helvetica Neue', sans-serif;
+      font-size: 0.6rem;
+      color: #7a1a1a;
+      cursor: pointer;
+      letter-spacing: 0.06em;
+      user-select: none;
+      -webkit-user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      justify-content: center;
+      padding: 3px 0 0;
+    }
+
+    .eject-icon {
+      width: 12px;
+      height: 12px;
+    }
+
+    .hold-toast {
+      position: absolute;
+      bottom: -55px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      color: #f5c518;
+      font-family: system-ui, sans-serif;
+      font-size: 0.65rem;
+      padding: 4px 10px;
+      border-radius: 4px;
+      white-space: nowrap;
+      visibility: hidden;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .hold-toast::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0;
+      background: rgba(224, 60, 40, 0.35);
+      z-index: -1;
+    }
+
+    .hold-toast.show {
+      visibility: visible;
+    }
+
+    .hold-toast.filling::before {
+      width: 100%;
+      transition: width 5s linear;
+    }
+
+    .hold-toast.phase1::before {
+      width: 0;
+      transition: none;
+    }
+
     /* ── Responsive ── */
 
     @media (max-width: 440px) {
@@ -521,15 +606,17 @@
         <div class="booklet" data-booklet>
           <span class="booklet-count">2²⁰</span>
           <span class="booklet-label">Swarm Stamps</span>
+          <span class="booklet-copy"><svg viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="1.5" stroke="currentColor" stroke-width="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4H5.5A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8" stroke="currentColor" stroke-width="2"/></svg></span>
           <span class="booklet-stamp"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1115 1115"><path d="M0 665.01V965l260 150 260-150.01V664.96L260 515 0 665.01zM855 515 595 665v299.99L855 1115l260-150.01V664.95L855 515zM817.32 300.27l-129.91-75.25-.13-149.98L557.5 0 297.68 150.01V450L557.5 600l259.82-150V300.27z" fill="#f5c518"/><path d="m817.32 300.27 129.91-75.3V75L817.52 0 687.28 75.04l130.24 74.83-.2 150.4z" fill="#f5c518"/></svg></span>
         </div>
         <div class="copied-toast" data-toast>Copied to clipboard</div>
+        <div class="hold-toast" data-hold-toast>Book of Stamps downloaded. Keep your stamps safe!</div>
       </div>
-      <div class="label label-collect">Collect Book of Stamps</div>
+      <div class="eject-label" data-eject><svg class="eject-icon" viewBox="0 0 24 24" fill="none"><path d="M5 14l7-9 7 9H5z" fill="currentColor"/><rect x="5" y="17" width="14" height="3" rx="0.5" fill="currentColor"/></svg>Eject</div>
       <div class="batch-info" data-batch-info></div>
     </div>
 
-    <div class="status" data-status></div>
+    <div class="status" data-status style="display:none"></div>
 
   </div>
   <script type="module" src="/src/main.ts"></script>

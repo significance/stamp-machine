@@ -15,7 +15,7 @@ const STATUS_TEXT: Record<MachineState, string> = {
   APPROVING: 'Approve BZZ spend\u2026',
   CREATING: 'Creating postage batch\u2026',
   DISPENSING: 'Dispensing book of stamps\u2026',
-  COMPLETE: 'Book of stamps downloaded! Click booklet to copy.',
+  COMPLETE: '',
 }
 
 const STORAGE_KEY = 'stamp-machine:current-book'
@@ -83,7 +83,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const coinSlot = document.querySelector<HTMLElement>('[data-coin-slot]')!
   const knob = document.querySelector<HTMLElement>('[data-knob]')!
   const booklet = document.querySelector<HTMLElement>('[data-booklet]')!
-  const status = document.querySelector<HTMLElement>('[data-status]')!
   const light = document.querySelector<HTMLElement>('[data-light]')!
   const toast = document.querySelector<HTMLElement>('[data-toast]')!
   const batchInfo = document.querySelector<HTMLElement>('[data-batch-info]')!
@@ -91,6 +90,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let state: MachineState = 'IDLE'
   let lastContent: string | null = null
+  const holdToast = document.querySelector<HTMLElement>('[data-hold-toast]')!
+  const ejectBtn = document.querySelector<HTMLElement>('[data-eject]')!
 
   // Fetch dynamic cost on load
   if (costEl) {
@@ -108,7 +109,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function setState(next: MachineState) {
     state = next
-    status.textContent = STATUS_TEXT[next]
+    const text = STATUS_TEXT[next]
+    if (text) {
+      holdToast.textContent = text
+      holdToast.classList.remove('filling')
+      holdToast.classList.add('show')
+    } else {
+      holdToast.classList.remove('show', 'filling')
+    }
     coinSlot.classList.toggle('disabled', next !== 'IDLE' && next !== 'COMPLETE')
     l33t('ST4T3', `${next}`)
 
@@ -176,7 +184,66 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
+  // Eject: hold-to-reset logic (3s phase1 + 5s phase2 = 8s total)
+  let holdTimer: ReturnType<typeof setTimeout> | null = null
+  let phaseTimer: ReturnType<typeof setTimeout> | null = null
+
+  function startEjectHold() {
+    // Trigger download of the book
+    const book = loadBook()
+    if (book) {
+      triggerDownload(book.content, `book-of-stamps-${book.batchId.slice(0, 8)}.txt`)
+      l33t('3J3CT', 'b00k 0f st4mps d0wnl04d3d')
+    }
+
+    // Phase 1: "Hold to reset!" for 3s
+    holdToast.textContent = 'Book of Stamps downloaded. Hold to reset'
+    holdToast.classList.remove('filling')
+    holdToast.classList.add('show')
+
+    // After 3s, switch to phase 2 with scary message + fill
+    phaseTimer = setTimeout(() => {
+      holdToast.textContent = 'Caution: storage will be deleted. Hold to reset.'
+      holdToast.classList.remove('filling')
+      void holdToast.offsetWidth
+      holdToast.classList.add('filling')
+    }, 3000)
+
+    // After 8s total, execute reset
+    holdTimer = setTimeout(() => {
+      localStorage.removeItem(STORAGE_KEY)
+      lastContent = null
+      resetMachine(knob, booklet)
+      batchInfo.textContent = ''
+      holdToast.classList.remove('show', 'filling')
+      void holdToast.offsetWidth
+      setState('IDLE')
+      l33t('3J3CT', 'st0r4g3 cl34r3d, m4ch1n3 r3s3t')
+    }, 8000)
+  }
+
+  function cancelEjectHold() {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null }
+    if (phaseTimer) { clearTimeout(phaseTimer); phaseTimer = null }
+    holdToast.classList.remove('show', 'filling')
+    void holdToast.offsetWidth
+  }
+
+  ejectBtn.addEventListener('mousedown', startEjectHold)
+  ejectBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startEjectHold() })
+  ejectBtn.addEventListener('mouseup', cancelEjectHold)
+  ejectBtn.addEventListener('mouseleave', cancelEjectHold)
+  ejectBtn.addEventListener('touchend', cancelEjectHold)
+  ejectBtn.addEventListener('touchcancel', cancelEjectHold)
+
   coinSlot.addEventListener('click', async () => {
+    if (state === 'COMPLETE') {
+      holdToast.textContent = 'Reset the machine before buying another book'
+      holdToast.classList.remove('filling')
+      holdToast.classList.add('show')
+      setTimeout(() => holdToast.classList.remove('show'), 2500)
+      return
+    }
     if (state !== 'IDLE') return
     const t0 = performance.now()
 
@@ -254,7 +321,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     } catch (err) {
       l33tErr('F41L', `${err}`)
-      status.textContent = err instanceof Error ? err.message : 'Transaction failed'
+      holdToast.textContent = err instanceof Error ? err.message : 'Transaction failed'
+      holdToast.classList.remove('filling')
+      holdToast.classList.add('show')
       resetMachine(knob, booklet)
       setTimeout(() => setState('IDLE'), 5000)
     }
