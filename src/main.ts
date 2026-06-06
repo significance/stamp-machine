@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const processing = next !== 'IDLE' && next !== 'COMPLETE'
     light.classList.toggle('active', processing)
     light.classList.toggle('success', next === 'COMPLETE')
+    ejectBtn.classList.toggle('visible', next === 'COMPLETE')
   }
 
   async function showBatchStatus(batchId: string, createdAt: string) {

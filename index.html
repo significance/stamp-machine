@@ -469,11 +469,15 @@
       letter-spacing: 0.06em;
       user-select: none;
       -webkit-user-select: none;
-      display: flex;
+      display: none;
       align-items: center;
       gap: 4px;
       justify-content: center;
       padding: 3px 0 0;
+    }
+
+    .eject-label.visible {
+      display: flex;
     }
 
     .eject-icon {
