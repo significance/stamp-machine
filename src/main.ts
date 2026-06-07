@@ -77,9 +77,9 @@ function formatBzz(plurs: bigint): string {
 document.addEventListener('DOMContentLoaded', async () => {
   console.log(`%c
   ╔══════════════════════════════════════════╗
-  ║   5W4RM  P0ST4G3  5T4MP  M4CH1N3       ║
+  ║   5W4RM  P0ST4G3  5T4MP  M4CH1N3         ║
   ║   ────────────────────────────────       ║
-  ║   1NS3RT C01N  >>  C0LL3CT ST4MPS       ║
+  ║   1NS3RT C01N  >>  C0LL3CT ST4MPS        ║
   ║                                          ║
   ║   p0st4g3: ${POSTAGE_CONTRACT.slice(0, 10)}...  ║
   ║   bzz:     ${BZZ_TOKEN.slice(0, 10)}...  ║
